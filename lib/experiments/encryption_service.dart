@@ -22,18 +22,18 @@ class E2EncryptionService {
   static final E2EncryptionService _instance = E2EncryptionService._();
   static E2EncryptionService get instance => _instance;
 
-  late List<int> nonce;
-  String appEncryptionSecret = "BIG MAFIA SECRET WAHOOOO";
+  late List<int> _nonce;
+  String _appEncryptionSecret = "BIG MAFIA SECRET WAHOOOO";
 
-  final exchangeAlgorithm = X25519();
-  final cypherAlgorithm = Chacha20.poly1305Aead();
-  late SimpleKeyPair sessionKey;
+  final _exchangeAlgorithm = X25519();
+  final _cypherAlgorithm = Chacha20.poly1305Aead();
+  late SimpleKeyPair _sessionKey;
 
-  Map<SimplePublicKey, SecretKey> cachedSecrets = {};
+  Map<SimplePublicKey, SecretKey> _cachedSecrets = {};
 
   List<int>? _publicKey;
   Future<List<int>> get getPublicKey async {
-    return _publicKey ??= (await sessionKey.extractPublicKey()).bytes;
+    return _publicKey ??= (await _sessionKey.extractPublicKey()).bytes;
   }
 
   /// Initializes the encryption service.
@@ -41,17 +41,17 @@ class E2EncryptionService {
   /// [uid] - The user ID.
   initialize({String uid = 'default'}) async {
     final algorithm = Sha1();
-    final hash = await algorithm.hash(appEncryptionSecret.codeUnits);
-    nonce = hash.bytes.take(12).toList();
+    final hash = await algorithm.hash(_appEncryptionSecret.codeUnits);
+    _nonce = hash.bytes.take(12).toList();
 
     SharedPreferences pref = await SharedPreferences.getInstance();
 
     var savedKey = pref.getString(uid);
     if (savedKey != null && savedKey.isNotEmpty) {
-      sessionKey = keyPairFromJsonString(savedKey);
+      _sessionKey = keyPairFromJsonString(savedKey);
     } else {
-      sessionKey = await exchangeAlgorithm.newKeyPair();
-      pref.setString(uid, (await keyPairToJsonString(sessionKey)));
+      _sessionKey = await _exchangeAlgorithm.newKeyPair();
+      pref.setString(uid, (await keyPairToJsonString(_sessionKey)));
     }
   }
 
@@ -59,12 +59,12 @@ class E2EncryptionService {
   ///
   /// [otherPublicKey] - The public key of the other party.
   Future<SecretKey> _getSharedSecret(SimplePublicKey otherPublicKey) async {
-    if (cachedSecrets[otherPublicKey] != null) {
-      return cachedSecrets[otherPublicKey]!;
+    if (_cachedSecrets[otherPublicKey] != null) {
+      return _cachedSecrets[otherPublicKey]!;
     } else {
-      final secret = await exchangeAlgorithm.sharedSecretKey(
-          keyPair: sessionKey, remotePublicKey: otherPublicKey);
-      cachedSecrets[otherPublicKey] = secret;
+      final secret = await _exchangeAlgorithm.sharedSecretKey(
+          keyPair: _sessionKey, remotePublicKey: otherPublicKey);
+      _cachedSecrets[otherPublicKey] = secret;
       return secret;
     }
   }
@@ -82,8 +82,8 @@ class E2EncryptionService {
 
     final encodedMessage = utf8.encode(message);
 
-    final secretBox = await cypherAlgorithm.encrypt(encodedMessage,
-        nonce: nonce, secretKey: sharedSecret);
+    final secretBox = await _cypherAlgorithm.encrypt(encodedMessage,
+        nonce: _nonce, secretKey: sharedSecret);
 
     return EncryptedData(
       bytes: secretBox.cipherText,
@@ -103,10 +103,10 @@ class E2EncryptionService {
     ));
 
     final secretBox = SecretBox(encryptedData.bytes,
-        nonce: nonce, mac: Mac(encryptedData.mac));
+        nonce: _nonce, mac: Mac(encryptedData.mac));
 
     var encodedMessage =
-        await cypherAlgorithm.decrypt(secretBox, secretKey: sharedSecret);
+        await _cypherAlgorithm.decrypt(secretBox, secretKey: sharedSecret);
     return utf8.decode(encodedMessage);
   }
 
