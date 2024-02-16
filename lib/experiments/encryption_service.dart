@@ -1,0 +1,129 @@
+import 'dart:convert';
+
+import 'package:cryptography/cryptography.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+
+//COMMENTS GENERATED WITH CO PILOT WOOOOOOOO
+
+class EncryptedData {
+  final List<int> bytes;
+
+  /// A message authentication code.
+  final List<int> mac;
+
+  EncryptedData({required this.bytes, required this.mac});
+}
+
+/// Service for end-to-end encryption.
+class E2EncryptionService {
+  E2EncryptionService._();
+
+  static final E2EncryptionService _instance = E2EncryptionService._();
+  static E2EncryptionService get instance => _instance;
+
+  late List<int> nonce;
+  String appEncryptionSecret = "BIG MAFIA SECRET WAHOOOO";
+
+  final exchangeAlgorithm = X25519();
+  final cypherAlgorithm = Chacha20.poly1305Aead();
+  late SimpleKeyPair sessionKey;
+
+  Map<SimplePublicKey, SecretKey> cachedSecrets = {};
+
+  List<int>? _publicKey;
+  Future<List<int>> get getPublicKey async {
+    return _publicKey ??= (await sessionKey.extractPublicKey()).bytes;
+  }
+
+  /// Initializes the encryption service.
+  ///
+  /// [uid] - The user ID.
+  initialize({String uid = 'default'}) async {
+    final algorithm = Sha1();
+    final hash = await algorithm.hash(appEncryptionSecret.codeUnits);
+    nonce = hash.bytes.take(12).toList();
+
+    SharedPreferences pref = await SharedPreferences.getInstance();
+
+    var savedKey = pref.getString(uid);
+    if (savedKey != null && savedKey.isNotEmpty) {
+      sessionKey = keyPairFromJsonString(savedKey);
+    } else {
+      sessionKey = await exchangeAlgorithm.newKeyPair();
+      pref.setString(uid, (await keyPairToJsonString(sessionKey)));
+    }
+  }
+
+  /// Retrieves or generates a shared secret key for encryption/decryption.
+  ///
+  /// [otherPublicKey] - The public key of the other party.
+  Future<SecretKey> _getSharedSecret(SimplePublicKey otherPublicKey) async {
+    if (cachedSecrets[otherPublicKey] != null) {
+      return cachedSecrets[otherPublicKey]!;
+    } else {
+      final secret = await exchangeAlgorithm.sharedSecretKey(
+          keyPair: sessionKey, remotePublicKey: otherPublicKey);
+      cachedSecrets[otherPublicKey] = secret;
+      return secret;
+    }
+  }
+
+  /// Encrypts a message using the provided public key.
+  ///
+  /// [otherPublicKey] - The public key of the recipient.
+  /// [message] - The message to encrypt.
+  Future<EncryptedData> encrypt(
+      List<int> otherPublicKey, String message) async {
+    SecretKey sharedSecret = await _getSharedSecret(SimplePublicKey(
+      otherPublicKey,
+      type: KeyPairType.x25519,
+    ));
+
+    final encodedMessage = utf8.encode(message);
+
+    final secretBox = await cypherAlgorithm.encrypt(encodedMessage,
+        nonce: nonce, secretKey: sharedSecret);
+
+    return EncryptedData(
+      bytes: secretBox.cipherText,
+      mac: secretBox.mac.bytes,
+    );
+  }
+
+  /// Decrypts an encrypted message using the provided public key.
+  ///
+  /// [encryptedData] - The encrypted data to decrypt.
+  /// [otherPublicKey] - The public key of the sender.
+  Future<String> decrypt(
+      EncryptedData encryptedData, List<int> otherPublicKey) async {
+    SecretKey sharedSecret = await _getSharedSecret(SimplePublicKey(
+      otherPublicKey,
+      type: KeyPairType.x25519,
+    ));
+
+    final secretBox = SecretBox(encryptedData.bytes,
+        nonce: nonce, mac: Mac(encryptedData.mac));
+
+    var encodedMessage =
+        await cypherAlgorithm.decrypt(secretBox, secretKey: sharedSecret);
+    return utf8.decode(encodedMessage);
+  }
+
+  Future<String> keyPairToJsonString(SimpleKeyPair keyPair) async {
+    SimpleKeyPairData keyData = await keyPair.extract();
+
+    Map data = {'private': keyData.bytes, 'public': keyData.publicKey.bytes};
+
+    return json.encode(data);
+  }
+
+  SimpleKeyPair keyPairFromJsonString(String encodedJson) {
+    Map data = json.decode(encodedJson);
+
+    return SimpleKeyPairData(<int>[...data['private']],
+        publicKey: SimplePublicKey(<int>[...data['public']],
+            type: KeyPairType.x25519),
+        type: KeyPairType.x25519);
+  }
+}
