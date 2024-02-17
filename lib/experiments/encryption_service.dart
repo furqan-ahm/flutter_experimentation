@@ -2,10 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 //COMMENTS GENERATED WITH CO PILOT WOOOOOOOO
 
