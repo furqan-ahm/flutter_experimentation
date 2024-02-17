@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:hive_flutter/adapters.dart';
+import 'package:hive/hive.dart';
 
 //COMMENTS GENERATED WITH CO PILOT WOOOOOOOO
 
@@ -53,7 +53,6 @@ class E2EncryptionService {
   ///
   /// [uid] - The user ID.
   initialize({String uid = 'default'}) async {
-    await Hive.initFlutter();
     // final algorithm = Sha1();
     // final hash = await algorithm.hash(_appEncryptionSecret.codeUnits);
     // _nonce = hash.bytes.take(12).toList();
